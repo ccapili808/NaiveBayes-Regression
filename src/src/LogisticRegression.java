@@ -10,7 +10,6 @@ import static org.ojalgo.function.constant.PrimitiveMath.*;
 
 
 public class LogisticRegression {
-
     private String vocabularyFile = "vocabulary.txt";
     private String trainingFile = "training.csv";
     private String classificationFile = "newsgrouplabels.txt";
@@ -146,6 +145,26 @@ public class LogisticRegression {
                 probabilities.set(j,i, (probabilities.get(j,i)/total));
             }
         }
+    }
+
+    public void setVocabularyFile(String vocabularyFile) {
+        this.vocabularyFile = vocabularyFile;
+    }
+
+    public void setTrainingFile(String trainingFile) {
+        this.trainingFile = trainingFile;
+    }
+
+    public void setClassificationFile(String classificationFile) {
+        this.classificationFile = classificationFile;
+    }
+
+    public void setTestingFile(String testingFile) {
+        this.testingFile = testingFile;
+    }
+
+    public void setLambda(double lambda) {
+        this.lambda = lambda;
     }
 
 }
