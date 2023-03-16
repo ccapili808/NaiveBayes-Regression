@@ -34,12 +34,14 @@ public class Main {
                 } catch (FileNotFoundException | UnsupportedEncodingException e) {
                     throw new RuntimeException(e);
                 }
+                break;
             }
             case 2 -> {
                 //Logistic Regression
                 System.out.println("Please enter the lambda value you would like to use:");
-                double lambda = scanner.nextDouble();
+                float lambda = scanner.nextFloat();
                 LogisticRegression logisticRegression = new LogisticRegression(lambda);
+                break;
             }
             case 3 -> {
                 //Exit
@@ -49,6 +51,7 @@ public class Main {
             default -> {
                 System.out.println("Invalid choice. Please try again.");
                 prompt();
+                break;
             }
         }
         scanner.close();
