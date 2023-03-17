@@ -1,14 +1,11 @@
+import no.uib.cipr.matrix.DenseMatrix;
+import no.uib.cipr.matrix.sparse.LinkedSparseMatrix;
+import org.ojalgo.array.Array2D;
 import org.ojalgo.data.DataProcessors;
-import org.ojalgo.function.PrimitiveFunction;
-import org.ojalgo.matrix.store.ElementsSupplier;
-import org.ojalgo.matrix.store.Primitive32Store;
-import org.ojalgo.matrix.store.Primitive64Store;
-import org.ojalgo.matrix.store.SparseStore;
-
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.util.*;
-
+import static no.uib.cipr.matrix.Matrices.getArray;
 import static org.ojalgo.function.constant.PrimitiveMath.*;
 
 
@@ -18,18 +15,11 @@ public class LogisticRegression {
     private String classificationFile = "newsgrouplabels.txt";
     private String testingFile = "testing.csv";
 
-    private Primitive32Store xMatrix = Primitive32Store.FACTORY.make(12000,61189);
-    private Primitive32Store classificationsMatrix = Primitive32Store.FACTORY.make(12000, 1);
-    private Primitive32Store probabilities = Primitive32Store.FACTORY.make(20,12000);
-    private Primitive32Store weightsMatrix = Primitive32Store.FACTORY.make(20,61189);
-    private Primitive32Store deltaMatrix = Primitive32Store.FACTORY.make(20,12000);
-    private Primitive32Store xTranspose = Primitive32Store.FACTORY.make(61189,12000);
-    PrimitiveFunction.Unary matrixOperation = arg -> {
-        if (Math.exp(arg) > 20 || Float.isInfinite((float)Math.exp(arg))) {
-            return 20;
-        }
-        else return Math.exp(arg);
-    };
+    private LinkedSparseMatrix xMatrix = new LinkedSparseMatrix(12000,61189);
+    private DenseMatrix classificationsMatrix = new DenseMatrix(12000,1);
+    private DenseMatrix weightsMatrix = new DenseMatrix(20,61189);
+    private DenseMatrix probabilities = new DenseMatrix(20,12000);
+    private DenseMatrix deltaMatrix = new DenseMatrix(20,12000);
 
 
     //the learning rate
@@ -39,11 +29,11 @@ public class LogisticRegression {
     private float lambda;
 
     //the number of iterations
-    private final int ITERATIONS = 10;
+    private final int ITERATIONS = 10000;
 
 
     public LogisticRegression(float lambda){
-        this.eta = 0.001f;
+        this.eta = 0.01f;
         this.lambda = lambda;
         try {
             createDataSet();
@@ -51,6 +41,7 @@ public class LogisticRegression {
             throw new RuntimeException(e);
         }
         train();
+        predict();
     }
 
     public void createDataSet() throws FileNotFoundException {
@@ -58,7 +49,7 @@ public class LogisticRegression {
         //initialize random weights
         for(int i =0; i <20;i++) {
             for(int j = 0; j<61189;j++) {
-                weightsMatrix.set(i,j,((0.001f*r.nextFloat())));
+                weightsMatrix.set(i,j,((1f*r.nextFloat())));
             }
         }
         System.out.println("Reading training set...");
@@ -95,10 +86,6 @@ public class LogisticRegression {
                 }
             }
         }
-        //get the transpose of the X matrix and make it into a SparseStore for efficient multiplication
-        ElementsSupplier temp1 = xMatrix.transpose();
-        temp1.supplyTo(xTranspose);
-
     }
 
     public void train(){
@@ -108,53 +95,117 @@ public class LogisticRegression {
             //calculate the new probability matrix using the weights
             calculateProbabilities();
 
-            //perform matrix operations using ojAlgo java library
+            //update weights
+            DenseMatrix temp;
+            DenseMatrix temp2 = new DenseMatrix(61189,20);
+            DenseMatrix temp3 = new DenseMatrix(20,61189);
+            temp = deltaMatrix.copy();
+            temp.add(-1, probabilities);
+            xMatrix.transABmult(temp, temp2);
+            temp2.transpose(temp3);
+            temp3.add(-lambda, weightsMatrix);
+            weightsMatrix.add(eta, temp3);
+            Array2D<Double> array2D = Array2D.R064.rows(getArray(weightsMatrix));
+            array2D.modifyAny(DataProcessors.CENTER_AND_SCALE);
+            weightsMatrix = new DenseMatrix(array2D.toRawCopy2D());
+        }
+    }
 
-            ElementsSupplier temp1;
-            ElementsSupplier temp2;
-            ElementsSupplier temp3;
-            ElementsSupplier temp4;
-            Primitive32Store matrix1 = Primitive32Store.FACTORY.make(20,12000);
-            Primitive32Store matrix2 = Primitive32Store.FACTORY.make(20,61189);
+    public void predict(){
+        Scanner sc = null;
+        try {
+            sc = new Scanner(new File(testingFile));
+        } catch (FileNotFoundException e) {
+            throw new RuntimeException(e);
+        }
+        xMatrix = null;
+        xMatrix = new LinkedSparseMatrix(6774,61189);
+        probabilities = new DenseMatrix(20,6774);
+        //read every line in testing set and build the data needed
+        //while (sc.hasNextLine()) {
+        for(int l = 0; l<6774;l++) {
+            String[] line = sc.nextLine().split(",");
+            float classification = Float.parseFloat(line[line.length-1]);
+            int documentID = Integer.parseInt(line[0]);
+            //print out the document number to see where the code is at
+            if(documentID%100 == 0) {
+                System.out.println("Reading DocumentID: " + documentID);
+            }
+            //set x0 to 1
+            xMatrix.set(documentID-12001,0,1f);
+            for (int i=1; i < (line.length-2); i++) {
+                float wordCount = Float.parseFloat(line[i]);
+                //add specific word count from each document to the total count of that word to the example matrix
+                xMatrix.set(documentID-12001,i,wordCount);
+            }
+        }
 
-            temp1 = deltaMatrix.onMatching(SUBTRACT, probabilities);
-            temp1.supplyTo(matrix1);
-            temp2 = matrix1.multiply(xMatrix);
-            temp3 = weightsMatrix.onAll(MULTIPLY, lambda);
-            temp3.supplyTo(matrix2);
-            temp4 = temp2.onMatching(SUBTRACT,matrix2);
-            temp4.onAll(MULTIPLY, eta);
-            temp4.onMatching(ADD, weightsMatrix);
-            temp4.supplyTo(weightsMatrix);
-            weightsMatrix.modifyAny(DataProcessors.CENTER_AND_SCALE);
+        DenseMatrix temp = new DenseMatrix(6774,20);
 
+        xMatrix.transBmult(weightsMatrix,temp);
+        temp.transpose(probabilities);
+        for(int i = 0; i < 6774; i++) {
+            probabilities.set(19,i,0);
+        }
+        Array2D<Double> array2D = Array2D.R064.rows(getArray(probabilities));
+        array2D.modifyAny(DataProcessors.CENTER_AND_SCALE);
+        array2D.modifyAll(EXP);
+        probabilities = new DenseMatrix(array2D.toRawCopy2D());
+
+        //normalize probability columns
+        for(int i = 0;i < 6774; i++) {
+            double total = 0;
+            for (int j = 0; j < 20; j++) {
+                total += probabilities.get(j,i);
+            }
+            if (total != 0) {
+                for (int j = 0; j < 20; j++) {
+                    probabilities.set(j, i, (probabilities.get(j, i) / total));
+                }
+            }
+        }
+
+        for(int i = 0;i < 6774; i++) {
+            double argmax = 0;
+            int prediction = 0;
+            for (int j = 0;j < 20; j++) {
+                if (probabilities.get(j,i) > argmax) {
+                    argmax = probabilities.get(j,i);
+                    prediction = j+1;
+                }
+            }
+            System.out.println(""+(12001+i)+","+prediction);
         }
     }
 
     public void calculateProbabilities() {
 
-        ElementsSupplier temp;
-        //multiply weights by x transpose
-        temp = weightsMatrix.multiply(xTranspose);
-        //make every element e^i
+        DenseMatrix temp = new DenseMatrix(12000,20);
 
-        temp.supplyTo(probabilities);
+        xMatrix.transBmult(weightsMatrix,temp);
+        temp.transpose(probabilities);
         for(int i = 0; i < 12000; i++) {
             probabilities.set(19,i,0);
         }
-        probabilities.modifyAny(DataProcessors.SCALE);
-        probabilities.onAll(matrixOperation);
+
+
+        Array2D<Double> array2D = Array2D.R064.rows(getArray(probabilities));
+        array2D.modifyAny(DataProcessors.CENTER_AND_SCALE);
+        array2D.modifyAll(EXP);
+
+        probabilities = new DenseMatrix(array2D.toRawCopy2D());
+
+
 
         //normalize probability columns
         for(int i = 0;i < 12000; i++) {
-            probabilities.set(19,i,1f);
-            float total = 0.0f;
+            double total = 0;
             for (int j = 0; j < 20; j++) {
                 total += probabilities.get(j,i);
             }
-            if (total != 0.0f) {
+            if (total != 0) {
                 for (int j = 0; j < 20; j++) {
-                    probabilities.set(j, i, (float) (probabilities.get(j, i) / total));
+                    probabilities.set(j, i, (probabilities.get(j, i) / total));
                 }
             }
         }
