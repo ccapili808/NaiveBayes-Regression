@@ -1,10 +1,14 @@
 import no.uib.cipr.matrix.DenseMatrix;
+import no.uib.cipr.matrix.Matrix;
+import no.uib.cipr.matrix.MatrixEntry;
 import no.uib.cipr.matrix.sparse.LinkedSparseMatrix;
 import org.ojalgo.array.Array2D;
 import org.ojalgo.data.DataProcessors;
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.util.*;
+import java.util.function.Consumer;
+
 import static no.uib.cipr.matrix.Matrices.getArray;
 import static org.ojalgo.function.constant.PrimitiveMath.*;
 
@@ -15,11 +19,13 @@ public class LogisticRegression {
     private String classificationFile = "newsgrouplabels.txt";
     private String testingFile = "testing.csv";
 
-    private LinkedSparseMatrix xMatrix = new LinkedSparseMatrix(12000,61189);
+    private LinkedSparseMatrix xMatrix = new LinkedSparseMatrix(8000,61189);
     private DenseMatrix classificationsMatrix = new DenseMatrix(12000,1);
     private DenseMatrix weightsMatrix = new DenseMatrix(20,61189);
-    private DenseMatrix probabilities = new DenseMatrix(20,12000);
-    private DenseMatrix deltaMatrix = new DenseMatrix(20,12000);
+    private DenseMatrix probabilities = new DenseMatrix(20,8000);
+    private DenseMatrix deltaMatrix = new DenseMatrix(20,8000);
+    private LinkedSparseMatrix testMatrix = new LinkedSparseMatrix(4000,61189);
+
 
 
     //the learning rate
@@ -29,11 +35,11 @@ public class LogisticRegression {
     private float lambda;
 
     //the number of iterations
-    private final int ITERATIONS = 10000;
+    private final int ITERATIONS = 2000;
 
 
     public LogisticRegression(float lambda){
-        this.eta = 0.01f;
+        this.eta = 0.001f;
         this.lambda = lambda;
         try {
             createDataSet();
@@ -57,7 +63,7 @@ public class LogisticRegression {
         sc = new Scanner(new File(trainingFile));
         //read every line in training set and build the data needed
         //while (sc.hasNextLine()) {
-        for(int l = 0; l<12000;l++) {
+        for(int l = 0; l<8000;l++) {
             String[] line = sc.nextLine().split(",");
             float classification = Float.parseFloat(line[line.length-1]);
             int documentID = Integer.parseInt(line[0]);
@@ -65,13 +71,13 @@ public class LogisticRegression {
             if(documentID%100 == 0) {
                 System.out.println("Reading DocumentID: " + documentID);
             }
-            for (int j = 0; j<20; j++) {
+            for (int j = 1; j<21; j++) {
                 //set the delta matrix
                 if (classification == j) {
-                    deltaMatrix.set(j,documentID-1,1f);
+                    deltaMatrix.set(j-1,documentID-1,1f);
                 }
                 else {
-                    deltaMatrix.set(j,documentID-1,0.0f);
+                    deltaMatrix.set(j-1,documentID-1,0.0f);
                 }
             }
             //add the document's classification to the matrix
@@ -83,6 +89,26 @@ public class LogisticRegression {
                 //add specific word count from each document to the total count of that word to the example matrix
                 if(wordCount>0) {
                     xMatrix.set(documentID-1,i,wordCount);
+                }
+            }
+        }
+        for(int l = 8000; l<12000;l++) {
+            String[] line = sc.nextLine().split(",");
+            int classification = Integer.parseInt(line[line.length-1]);
+            int documentID = Integer.parseInt(line[0]);
+            //print out the document number to see where the code is at
+            if(documentID%100 == 0) {
+                System.out.println("Reading DocumentID: " + documentID);
+            }
+            //add the document's classification to the matrix
+            classificationsMatrix.set(documentID-1,0,classification);
+            //set x0 to 1
+            testMatrix.set(documentID-8001,0,1);
+            for (int i=1; i < (line.length-2); i++) {
+                double wordCount = Double.parseDouble(line[i]);
+                //add specific word count from each document to the total count of that word to the example matrix
+                if(wordCount>0) {
+                    testMatrix.set(documentID-8001,i,wordCount);
                 }
             }
         }
@@ -108,7 +134,68 @@ public class LogisticRegression {
             Array2D<Double> array2D = Array2D.R064.rows(getArray(weightsMatrix));
             array2D.modifyAny(DataProcessors.CENTER_AND_SCALE);
             weightsMatrix = new DenseMatrix(array2D.toRawCopy2D());
+            checkAccuracy();
         }
+    }
+    public void checkAccuracy(){
+        //multiply weights by x transpose
+        //temp = weightsMatrix.multiply(xMatrix.transpose());
+        DenseMatrix temp = new DenseMatrix(4000,20);
+        probabilities = new DenseMatrix(20,4000);
+
+        //make every element e^i
+        testMatrix.transBmult(weightsMatrix,temp);
+        temp.transpose(probabilities);
+        for(int i = 0; i < 4000; i++) {
+            probabilities.set(19,i,0);
+        }
+        Array2D<Double> array2D = Array2D.R064.rows(getArray(probabilities));
+        array2D.modifyAny(DataProcessors.CENTER_AND_SCALE);
+        array2D.modifyAll(EXP);
+        probabilities = new DenseMatrix(array2D.toRawCopy2D());
+
+        // temp.supplyTo(probabilities);
+
+        for(int i = 0; i < 4000; i++) {
+            probabilities.set(19,i,1);
+        }
+        //Array2D<Double> array2D = Array2D.R064.rows(getArray(probabilities));
+        //Primitive32Store temp = Primitive32Store.FACTORY.rows(getArray(probabilities));
+        //temp.modifyAny(DataProcessors.SCALE);
+        //temp.modifyAll(EXP);
+        //array2D.modifyAny(DataProcessors.STANDARD_SCORE);
+        //array2D.modifyAll(EXP);
+        //robabilities = new DenseMatrix(array2D.toRawCopy2D());
+
+        //normalize probability columns
+        for(int i = 0;i < 4000; i++) {
+            double total = 0;
+            for (int j = 0; j < 20; j++) {
+                total += probabilities.get(j,i);
+            }
+            if (total != 0) {
+                for (int j = 0; j < 20; j++) {
+                    probabilities.set(j, i, (probabilities.get(j, i) / total));
+                }
+            }
+        }
+        double accuracy = 0;
+        for(int i = 0;i < 4000; i++) {
+            double argmax = 0;
+            int prediction = 0;
+            for (int j = 0;j < 20; j++) {
+                if (probabilities.get(j,i) > argmax) {
+                    argmax = probabilities.get(j,i);
+                    prediction = j+1;
+                }
+            }
+            if(prediction==classificationsMatrix.get(i+8000,0)) {
+
+                accuracy++;
+            }
+        }
+        accuracy = accuracy/4000;
+        System.out.println(accuracy);
     }
 
     public void predict(){
@@ -180,11 +267,13 @@ public class LogisticRegression {
 
     public void calculateProbabilities() {
 
-        DenseMatrix temp = new DenseMatrix(12000,20);
+        DenseMatrix temp = new DenseMatrix(8000,20);
+        probabilities = new DenseMatrix(20,8000);
+
 
         xMatrix.transBmult(weightsMatrix,temp);
         temp.transpose(probabilities);
-        for(int i = 0; i < 12000; i++) {
+        for(int i = 0; i < 8000; i++) {
             probabilities.set(19,i,0);
         }
 
@@ -198,7 +287,7 @@ public class LogisticRegression {
 
 
         //normalize probability columns
-        for(int i = 0;i < 12000; i++) {
+        for(int i = 0;i < 8000; i++) {
             double total = 0;
             for (int j = 0; j < 20; j++) {
                 total += probabilities.get(j,i);
