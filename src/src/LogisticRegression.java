@@ -1,6 +1,7 @@
 import no.uib.cipr.matrix.DenseMatrix;
 import no.uib.cipr.matrix.Matrix;
 import no.uib.cipr.matrix.MatrixEntry;
+import no.uib.cipr.matrix.io.MatrixVectorReader;
 import no.uib.cipr.matrix.sparse.LinkedSparseMatrix;
 import org.ojalgo.array.Array2D;
 import org.ojalgo.data.DataProcessors;
@@ -24,6 +25,8 @@ public class LogisticRegression {
     private DenseMatrix weightsMatrix = new DenseMatrix(20,61189);
     private DenseMatrix probabilities = new DenseMatrix(20,8000);
     private DenseMatrix deltaMatrix = new DenseMatrix(20,8000);
+    private DenseMatrix lineVector = new DenseMatrix(1,61189);
+    private double[][] lineArray = new double[1][61189];
     private LinkedSparseMatrix testMatrix = new LinkedSparseMatrix(4000,61189);
 
 
@@ -35,11 +38,12 @@ public class LogisticRegression {
     private float lambda;
 
     //the number of iterations
-    private final int ITERATIONS = 2000;
+    private final int ITERATIONS = 20000;
+    private double testAccuracy = 0;
 
 
     public LogisticRegression(float lambda){
-        this.eta = 0.001f;
+        this.eta = 0.01f;
         this.lambda = lambda;
         try {
             createDataSet();
@@ -55,7 +59,7 @@ public class LogisticRegression {
         //initialize random weights
         for(int i =0; i <20;i++) {
             for(int j = 0; j<61189;j++) {
-                weightsMatrix.set(i,j,((1f*r.nextFloat())));
+                weightsMatrix.set(i,j,((0.1f*r.nextFloat())));
             }
         }
         System.out.println("Reading training set...");
@@ -84,11 +88,23 @@ public class LogisticRegression {
             classificationsMatrix.set(documentID-1,0,classification);
             //set x0 to 1
             xMatrix.set(documentID-1,0,1f);
+            lineVector.zero();
             for (int i=1; i < (line.length-2); i++) {
                 float wordCount = Float.parseFloat(line[i]);
                 //add specific word count from each document to the total count of that word to the example matrix
                 if(wordCount>0) {
-                    xMatrix.set(documentID-1,i,wordCount);
+                    lineVector.set(0,i,wordCount);
+                }
+                    //xMatrix.set(documentID-1,i,wordCount);
+            }
+            double norm = lineVector.norm(Matrix.Norm.Frobenius);
+            Consumer<MatrixEntry> entry = a -> a.set((a.get()/norm));
+            //Consumer<MatrixEntry> entry = a -> a.set(Math.log(a.get()+1));
+            lineVector.forEach(entry);
+            for(int k=1;k<61189;k++) {
+                double wordCount = lineVector.get(0,k);
+                if (wordCount>0) {
+                    xMatrix.set(documentID-1,k,wordCount);
                 }
             }
         }
@@ -108,15 +124,26 @@ public class LogisticRegression {
                 double wordCount = Double.parseDouble(line[i]);
                 //add specific word count from each document to the total count of that word to the example matrix
                 if(wordCount>0) {
+                    //lineVector.set(0,i,wordCount);
                     testMatrix.set(documentID-8001,i,wordCount);
                 }
             }
+            /*
+            //lineVector.modifyAny(DataProcessors.SCALE);
+            for(int k=1;k<61189;k++) {
+                double wordCount = lineVector.doubleValue(0,k);
+                if (wordCount>0) {
+                    xMatrix.set(documentID-8001,k,wordCount);
+                }
+            }
+
+             */
         }
     }
 
     public void train(){
         //iterate and update weight matrix every time
-        for(int k = 0; k<= ITERATIONS; k++){
+        for(int k = 0; k< ITERATIONS; k++){
             System.out.println("Iteration Number: " + k);
             //calculate the new probability matrix using the weights
             calculateProbabilities();
@@ -132,8 +159,9 @@ public class LogisticRegression {
             temp3.add(-lambda, weightsMatrix);
             weightsMatrix.add(eta, temp3);
             Array2D<Double> array2D = Array2D.R064.rows(getArray(weightsMatrix));
-            array2D.modifyAny(DataProcessors.CENTER_AND_SCALE);
+            array2D.modifyAny(DataProcessors.SCALE);
             weightsMatrix = new DenseMatrix(array2D.toRawCopy2D());
+            System.out.println("Probability: " +probabilities.get(19,46));
             checkAccuracy();
         }
     }
@@ -146,19 +174,19 @@ public class LogisticRegression {
         //make every element e^i
         testMatrix.transBmult(weightsMatrix,temp);
         temp.transpose(probabilities);
-        for(int i = 0; i < 4000; i++) {
-            probabilities.set(19,i,0);
-        }
+        //for(int i = 0; i < 4000; i++) {
+        //    probabilities.set(19,i,0);
+        //}
         Array2D<Double> array2D = Array2D.R064.rows(getArray(probabilities));
-        array2D.modifyAny(DataProcessors.CENTER_AND_SCALE);
+        array2D.modifyAny(DataProcessors.SCALE);
         array2D.modifyAll(EXP);
         probabilities = new DenseMatrix(array2D.toRawCopy2D());
 
         // temp.supplyTo(probabilities);
 
-        for(int i = 0; i < 4000; i++) {
-            probabilities.set(19,i,1);
-        }
+        //for(int i = 0; i < 4000; i++) {
+        //    probabilities.set(19,i,1);
+        //}
         //Array2D<Double> array2D = Array2D.R064.rows(getArray(probabilities));
         //Primitive32Store temp = Primitive32Store.FACTORY.rows(getArray(probabilities));
         //temp.modifyAny(DataProcessors.SCALE);
@@ -168,6 +196,7 @@ public class LogisticRegression {
         //robabilities = new DenseMatrix(array2D.toRawCopy2D());
 
         //normalize probability columns
+
         for(int i = 0;i < 4000; i++) {
             double total = 0;
             for (int j = 0; j < 20; j++) {
@@ -179,6 +208,8 @@ public class LogisticRegression {
                 }
             }
         }
+
+
         double accuracy = 0;
         for(int i = 0;i < 4000; i++) {
             double argmax = 0;
@@ -194,8 +225,8 @@ public class LogisticRegression {
                 accuracy++;
             }
         }
-        accuracy = accuracy/4000;
-        System.out.println(accuracy);
+        testAccuracy = accuracy/4000;
+        System.out.println(testAccuracy);
     }
 
     public void predict(){
@@ -223,7 +254,9 @@ public class LogisticRegression {
             for (int i=1; i < (line.length-2); i++) {
                 float wordCount = Float.parseFloat(line[i]);
                 //add specific word count from each document to the total count of that word to the example matrix
-                xMatrix.set(documentID-12001,i,wordCount);
+                if (wordCount>0) {
+                    xMatrix.set(documentID - 12001, i, wordCount);
+                }
             }
         }
 
@@ -231,11 +264,14 @@ public class LogisticRegression {
 
         xMatrix.transBmult(weightsMatrix,temp);
         temp.transpose(probabilities);
+
         for(int i = 0; i < 6774; i++) {
             probabilities.set(19,i,0);
         }
+
+
         Array2D<Double> array2D = Array2D.R064.rows(getArray(probabilities));
-        array2D.modifyAny(DataProcessors.CENTER_AND_SCALE);
+        array2D.modifyAny(DataProcessors.SCALE);
         array2D.modifyAll(EXP);
         probabilities = new DenseMatrix(array2D.toRawCopy2D());
 
@@ -273,13 +309,15 @@ public class LogisticRegression {
 
         xMatrix.transBmult(weightsMatrix,temp);
         temp.transpose(probabilities);
+
         for(int i = 0; i < 8000; i++) {
             probabilities.set(19,i,0);
         }
 
 
+
         Array2D<Double> array2D = Array2D.R064.rows(getArray(probabilities));
-        array2D.modifyAny(DataProcessors.CENTER_AND_SCALE);
+        array2D.modifyAny(DataProcessors.SCALE);
         array2D.modifyAll(EXP);
 
         probabilities = new DenseMatrix(array2D.toRawCopy2D());
@@ -298,6 +336,8 @@ public class LogisticRegression {
                 }
             }
         }
+
+
     }
 
     public void setVocabularyFile(String vocabularyFile) {
