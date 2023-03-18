@@ -1,10 +1,21 @@
 import no.uib.cipr.matrix.DenseMatrix;
+import no.uib.cipr.matrix.DenseVector;
 import no.uib.cipr.matrix.Matrix;
 import no.uib.cipr.matrix.MatrixEntry;
 import no.uib.cipr.matrix.io.MatrixVectorReader;
 import no.uib.cipr.matrix.sparse.LinkedSparseMatrix;
 import org.ojalgo.array.Array2D;
 import org.ojalgo.data.DataProcessors;
+import org.ojalgo.function.PrimitiveFunction;
+import org.ojalgo.function.UnaryFunction;
+import org.ojalgo.function.VoidFunction;
+import org.ojalgo.function.aggregator.Aggregator;
+import org.ojalgo.function.constant.PrimitiveMath;
+import org.ojalgo.matrix.store.SparseStore;
+import org.ojalgo.random.Normal;
+import org.ojalgo.structure.Access1D;
+import org.ojalgo.structure.Factory1D;
+
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.util.*;
@@ -20,14 +31,13 @@ public class LogisticRegression {
     private String classificationFile = "newsgrouplabels.txt";
     private String testingFile = "testing.csv";
 
-    private LinkedSparseMatrix xMatrix = new LinkedSparseMatrix(8000,61189);
+    private LinkedSparseMatrix xMatrix = new LinkedSparseMatrix(10000,61189);
     private DenseMatrix classificationsMatrix = new DenseMatrix(12000,1);
     private DenseMatrix weightsMatrix = new DenseMatrix(20,61189);
-    private DenseMatrix probabilities = new DenseMatrix(20,8000);
-    private DenseMatrix deltaMatrix = new DenseMatrix(20,8000);
+    private DenseMatrix probabilities = new DenseMatrix(20,10000);
+    private DenseMatrix deltaMatrix = new DenseMatrix(20,10000);
     private DenseMatrix lineVector = new DenseMatrix(1,61189);
-    private double[][] lineArray = new double[1][61189];
-    private LinkedSparseMatrix testMatrix = new LinkedSparseMatrix(4000,61189);
+    private LinkedSparseMatrix testMatrix = new LinkedSparseMatrix(2000,61189);
 
 
 
@@ -38,7 +48,7 @@ public class LogisticRegression {
     private float lambda;
 
     //the number of iterations
-    private final int ITERATIONS = 20000;
+    private final int ITERATIONS = 10000;
     private double testAccuracy = 0;
 
 
@@ -59,7 +69,7 @@ public class LogisticRegression {
         //initialize random weights
         for(int i =0; i <20;i++) {
             for(int j = 0; j<61189;j++) {
-                weightsMatrix.set(i,j,((0.1f*r.nextFloat())));
+                weightsMatrix.set(i,j,((0.1*r.nextFloat())));
             }
         }
         System.out.println("Reading training set...");
@@ -67,7 +77,8 @@ public class LogisticRegression {
         sc = new Scanner(new File(trainingFile));
         //read every line in training set and build the data needed
         //while (sc.hasNextLine()) {
-        for(int l = 0; l<8000;l++) {
+
+        for(int l = 0; l<10000;l++) {
             String[] line = sc.nextLine().split(",");
             float classification = Float.parseFloat(line[line.length-1]);
             int documentID = Integer.parseInt(line[0]);
@@ -88,6 +99,16 @@ public class LogisticRegression {
             classificationsMatrix.set(documentID-1,0,classification);
             //set x0 to 1
             xMatrix.set(documentID-1,0,1f);
+            for (int i=1; i < (line.length-2); i++) {
+                float wordCount = Float.parseFloat(line[i]);
+                //add specific word count from each document to the total count of that word to the example matrix
+                if(wordCount>0) {
+                    xMatrix.set(documentID-1,i,wordCount);
+                }
+            }
+            //This code would standardize per row of data
+            /*
+
             lineVector.zero();
             for (int i=1; i < (line.length-2); i++) {
                 float wordCount = Float.parseFloat(line[i]);
@@ -107,8 +128,14 @@ public class LogisticRegression {
                     xMatrix.set(documentID-1,k,wordCount);
                 }
             }
+            */
         }
-        for(int l = 8000; l<12000;l++) {
+
+        //NormalizeMatrix();
+        //StandardizeMatrix();
+        //TfIdfScaling();
+
+        for(int l = 10000; l<12000;l++) {
             String[] line = sc.nextLine().split(",");
             int classification = Integer.parseInt(line[line.length-1]);
             int documentID = Integer.parseInt(line[0]);
@@ -119,26 +146,94 @@ public class LogisticRegression {
             //add the document's classification to the matrix
             classificationsMatrix.set(documentID-1,0,classification);
             //set x0 to 1
-            testMatrix.set(documentID-8001,0,1);
+            testMatrix.set(documentID-10001,0,1);
             for (int i=1; i < (line.length-2); i++) {
                 double wordCount = Double.parseDouble(line[i]);
                 //add specific word count from each document to the total count of that word to the example matrix
                 if(wordCount>0) {
-                    //lineVector.set(0,i,wordCount);
-                    testMatrix.set(documentID-8001,i,wordCount);
+                    testMatrix.set(documentID-10001,i,wordCount);
                 }
             }
-            /*
-            //lineVector.modifyAny(DataProcessors.SCALE);
-            for(int k=1;k<61189;k++) {
-                double wordCount = lineVector.doubleValue(0,k);
-                if (wordCount>0) {
-                    xMatrix.set(documentID-8001,k,wordCount);
-                }
-            }
-
-             */
         }
+        /*
+        double[] test = new double[20];
+        for(int i = 10000; i<12000;i++) {
+            double classification = classificationsMatrix.get(i,0);
+            test[(int)(classification-1)] = test[(int)(classification-1)] + 1;
+        }
+         */
+    }
+
+    private void StandardizeMatrix() {
+        DenseMatrix columnHelper = new DenseMatrix(10000,1);
+        Consumer<MatrixEntry> set1 = a -> a.set(1);
+        columnHelper.forEach(set1);
+        DenseMatrix columnMeans = new DenseMatrix(61189,1);
+        DenseMatrix columnSD = new DenseMatrix(61189,1);
+        for (int p=0;p<61189;p++) {
+            double standardDeviation = 0;
+            for(int q=0;q<10000;q++) {
+                standardDeviation += Math.pow(xMatrix.get(q,p)-columnMeans.get(p,0),2);
+            }
+            columnSD.set(p,0,Math.sqrt(standardDeviation/10000));
+        }
+        xMatrix.transAmult((1/10000),columnHelper,columnMeans);
+        Iterator<MatrixEntry> test = xMatrix.iterator();
+        while (test.hasNext()) {
+            MatrixEntry next = test.next();
+            if (next.column()==1) {
+                xMatrix.set(next.row(),next.column(),1);
+            }
+            else {
+                xMatrix.set(next.row(), next.column(), (next.get() -columnMeans.get(next.column(),0))
+                        / (columnSD.get(next.column(),0)));
+            }
+        }
+    }
+
+    private void NormalizeMatrix() {
+        DenseMatrix columnHelper = new DenseMatrix(10000,1);
+        Consumer<MatrixEntry> set1 = a -> a.set(1);
+        columnHelper.forEach(set1);
+        DenseMatrix columnSums = new DenseMatrix(61189,1);
+        xMatrix.transAmult(columnHelper,columnSums);
+        Iterator<MatrixEntry> test = xMatrix.iterator();
+        while (test.hasNext()) {
+            MatrixEntry next = test.next();
+            xMatrix.set(next.row(), next.column(), next.get() / columnSums.get(next.column(), 0));
+        }
+    }
+
+    private void TfIdfScaling() {
+        DenseMatrix wordSum = new DenseMatrix(10000,1);
+        DenseMatrix sumHelper = new DenseMatrix(61189,1);
+        Consumer<MatrixEntry> set1 = a -> a.set(1);
+        sumHelper.forEach(set1);
+        xMatrix.mult(sumHelper, wordSum);
+        Consumer<MatrixEntry> sub1 = a -> a.set(a.get()-1);
+        wordSum.forEach(sub1);
+        DenseMatrix wordAppears = new DenseMatrix(61189,1);
+        for(int i=1;i<61189;i++) {
+            double totalDocs = 0;
+            for(int j=0;j<10000;j++) {
+                if (xMatrix.get(j,i)>0) {
+                    totalDocs += 1;
+                }
+            }
+            wordAppears.set(i,0,totalDocs);
+        }
+        Iterator<MatrixEntry> test = xMatrix.iterator();
+        while (test.hasNext()) {
+            MatrixEntry next = test.next();
+            int column = next.column();
+            int row = next.row();
+            if (column!=0) {
+                double tfidf = ((xMatrix.get(row,column))/wordSum.get(row,0))*Math.log((10000+1)/(wordAppears.get(column,0)+1));
+
+                xMatrix.set(next.row(), next.column(), tfidf);
+            }
+        }
+
     }
 
     public void train(){
@@ -161,15 +256,14 @@ public class LogisticRegression {
             Array2D<Double> array2D = Array2D.R064.rows(getArray(weightsMatrix));
             array2D.modifyAny(DataProcessors.SCALE);
             weightsMatrix = new DenseMatrix(array2D.toRawCopy2D());
-            System.out.println("Probability: " +probabilities.get(19,46));
             checkAccuracy();
         }
     }
     public void checkAccuracy(){
         //multiply weights by x transpose
         //temp = weightsMatrix.multiply(xMatrix.transpose());
-        DenseMatrix temp = new DenseMatrix(4000,20);
-        probabilities = new DenseMatrix(20,4000);
+        DenseMatrix temp = new DenseMatrix(2000,20);
+        probabilities = new DenseMatrix(20,2000);
 
         //make every element e^i
         testMatrix.transBmult(weightsMatrix,temp);
@@ -182,22 +276,7 @@ public class LogisticRegression {
         array2D.modifyAll(EXP);
         probabilities = new DenseMatrix(array2D.toRawCopy2D());
 
-        // temp.supplyTo(probabilities);
-
-        //for(int i = 0; i < 4000; i++) {
-        //    probabilities.set(19,i,1);
-        //}
-        //Array2D<Double> array2D = Array2D.R064.rows(getArray(probabilities));
-        //Primitive32Store temp = Primitive32Store.FACTORY.rows(getArray(probabilities));
-        //temp.modifyAny(DataProcessors.SCALE);
-        //temp.modifyAll(EXP);
-        //array2D.modifyAny(DataProcessors.STANDARD_SCORE);
-        //array2D.modifyAll(EXP);
-        //robabilities = new DenseMatrix(array2D.toRawCopy2D());
-
-        //normalize probability columns
-
-        for(int i = 0;i < 4000; i++) {
+        for(int i = 0;i < 2000; i++) {
             double total = 0;
             for (int j = 0; j < 20; j++) {
                 total += probabilities.get(j,i);
@@ -211,7 +290,7 @@ public class LogisticRegression {
 
 
         double accuracy = 0;
-        for(int i = 0;i < 4000; i++) {
+        for(int i = 0;i < 2000; i++) {
             double argmax = 0;
             int prediction = 0;
             for (int j = 0;j < 20; j++) {
@@ -220,13 +299,12 @@ public class LogisticRegression {
                     prediction = j+1;
                 }
             }
-            if(prediction==classificationsMatrix.get(i+8000,0)) {
-
+            if(prediction==classificationsMatrix.get(i+10000,0)) {
                 accuracy++;
             }
         }
-        testAccuracy = accuracy/4000;
-        System.out.println(testAccuracy);
+        testAccuracy = accuracy/2000;
+        System.out.println("Test accuracy: "+ testAccuracy);
     }
 
     public void predict(){
@@ -265,10 +343,6 @@ public class LogisticRegression {
         xMatrix.transBmult(weightsMatrix,temp);
         temp.transpose(probabilities);
 
-        for(int i = 0; i < 6774; i++) {
-            probabilities.set(19,i,0);
-        }
-
 
         Array2D<Double> array2D = Array2D.R064.rows(getArray(probabilities));
         array2D.modifyAny(DataProcessors.SCALE);
@@ -303,18 +377,11 @@ public class LogisticRegression {
 
     public void calculateProbabilities() {
 
-        DenseMatrix temp = new DenseMatrix(8000,20);
-        probabilities = new DenseMatrix(20,8000);
-
+        DenseMatrix temp = new DenseMatrix(10000,20);
+        probabilities = new DenseMatrix(20,10000);
 
         xMatrix.transBmult(weightsMatrix,temp);
         temp.transpose(probabilities);
-
-        for(int i = 0; i < 8000; i++) {
-            probabilities.set(19,i,0);
-        }
-
-
 
         Array2D<Double> array2D = Array2D.R064.rows(getArray(probabilities));
         array2D.modifyAny(DataProcessors.SCALE);
@@ -323,9 +390,8 @@ public class LogisticRegression {
         probabilities = new DenseMatrix(array2D.toRawCopy2D());
 
 
-
         //normalize probability columns
-        for(int i = 0;i < 8000; i++) {
+        for(int i = 0;i < 10000; i++) {
             double total = 0;
             for (int j = 0; j < 20; j++) {
                 total += probabilities.get(j,i);
@@ -336,6 +402,22 @@ public class LogisticRegression {
                 }
             }
         }
+        double accuracy = 0;
+        for(int i = 0;i < 10000; i++) {
+            double argmax = 0;
+            int prediction = 0;
+            for (int j = 0;j < 20; j++) {
+                if (probabilities.get(j,i) > argmax) {
+                    argmax = probabilities.get(j,i);
+                    prediction = j+1;
+                }
+            }
+            if(prediction==classificationsMatrix.get(i,0)) {
+                accuracy++;
+            }
+        }
+        testAccuracy = accuracy/10000;
+        System.out.println("Train accuracy: "+ testAccuracy);
 
 
     }
