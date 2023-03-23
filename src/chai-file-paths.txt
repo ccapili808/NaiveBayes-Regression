@@ -1,0 +1,4 @@
+C:\Users\Chai\Documents\NaiveBayes-Regression\src\testing.csv
+C:\Users\Chai\Documents\NaiveBayes-Regression\src\training.csv
+C:\Users\Chai\Documents\NaiveBayes-Regression\src\vocabulary.txt
+C:\Users\Chai\Documents\NaiveBayes-Regression\src\newsgrouplabels.txt
