@@ -196,6 +196,7 @@ public class NaiveBayes {
         ArrayList<Double> sortedMI = new ArrayList<>(MI.keySet());
         Collections.sort(sortedMI);
         Collections.reverse(sortedMI);
+        //print out the 100 best words
         for (int i = 0;i < 100; i++) {
             int wordIndex = MI.get(sortedMI.get(i));
             System.out.println(vocabulary.get(wordIndex));
