@@ -39,7 +39,11 @@ public class Main {
                 //Logistic Regression
                 System.out.println("Please enter the lambda value you would like to use:");
                 float lambda = scanner.nextFloat();
-                LogisticRegression logisticRegression = new LogisticRegression(lambda);
+                System.out.println("Please enter the eta value you would like to use:");
+                float eta = scanner.nextFloat();
+                System.out.println("Please enter the iteration number you would like to use:");
+                int iterations = scanner.nextInt();
+                LogisticRegression logisticRegression = new LogisticRegression(lambda,eta,iterations);
             }
             case 3 -> {
                 //Exit
