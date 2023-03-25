@@ -16,6 +16,9 @@ import java.util.*;
  * This class just used hashmaps since there are no iterations and the operations
  * just need to be performed once. Performance could probably be improved but
  * is acceptable for the purposes of this project.
+ * Training takes a few minutes, then checking validation set accuracy takes 5-10 minutes as
+ * there are a lot of operations and checks per document and
+ * finally the code prints out the predictions for each of the test documents.
  */
 public class NaiveBayes {
     //set the names of the input files
@@ -31,7 +34,7 @@ public class NaiveBayes {
     private HashMap<Integer, HashMap<Integer,Double>> wordProbabilities = new HashMap<>();
     private HashMap<Integer,Double> classProbabilities = new HashMap<>();
     private HashMap<Integer, String> vocabulary = new HashMap<>();
-    private ArrayList<String[]> validationSet = new ArrayList<>();
+    //private ArrayList<String[]> validationSet = new ArrayList<>();
     //this 2d array is used for mutual information
     private int[][] xOccurances = new int[61188][20];
     //confusion matrix 2d array
@@ -113,10 +116,13 @@ public class NaiveBayes {
             }
         }
         //add the other 2000 documents to the validation set
+        /*
         for (int k = 10000; k < 12000; k++) {
             String[] line = sc.nextLine().split(",");
             validationSet.add(line);
         }
+
+         */
     }
 
     /**
@@ -262,6 +268,40 @@ public class NaiveBayes {
     public void calculateAccuracy () {
         System.out.println("Calculating validation set accuracy and confusion matrix...");
         double correctPredictions = 0;
+        Scanner sc = null;
+        try {
+            sc = new Scanner(new File(trainingFile));
+        } catch (FileNotFoundException e) {
+            throw new RuntimeException(e);
+        }
+        //read every line in training set and build the data needed to calculate Bayes terms
+        //10000 training set
+        for (int k = 0; k < 10000; k++) {
+            sc.nextLine();
+        }
+        for (int k = 10000; k < 12000; k++) {
+            String[] line = sc.nextLine().split(",");
+            HashMap<Double, Integer> classProb = new HashMap<>();
+            //calculate Y for each class given all the words of a document
+            for (int j = 1; j < 21; j++) {
+                double probSum = 0;
+                //use log to change to addition instead of multiplication
+                for (int i = 1; i < line.length - 1; i++) {
+                    probSum += Integer.parseInt(line[i]) * log2(wordProbabilities.get(i).get(j));
+                }
+                classProb.put((log2(classProbabilities.get(j)) + probSum), j);
+            }
+            //get the max Y from all classes which will be our prediction and return it
+            double argmax = Collections.max(classProb.keySet());
+            int prediction = classProb.get(argmax);
+            int classification = Integer.parseInt(line[line.length-1]);
+            if (prediction == classification) {
+                correctPredictions += 1;
+            }
+            //add the prediction to the confusion matrix
+            confusionMatrix[classification-1][prediction-1]++;
+        }
+        /*
         for (String[] validationInstance: validationSet
              ) {
             HashMap<Double, Integer> classProb = new HashMap<>();
@@ -284,6 +324,8 @@ public class NaiveBayes {
             //add the prediction to the confusion matrix
             confusionMatrix[classification-1][prediction-1]++;
         }
+
+         */
         //calculate accuracy and print out accuracy/confusion matrix
         double accurracy = correctPredictions/2000;
         System.out.println("Validation Set Accuracy: " + accurracy);

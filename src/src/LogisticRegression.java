@@ -20,7 +20,7 @@ import static org.ojalgo.function.constant.PrimitiveMath.*;
  * Every iteration, the iteration number, the training data accuracy, testing data accuracy
  * and conditional data likelihood are printed in the console.
  * This class uses matrices instead of standard Java structures because they are more efficient
- * and this code can perform ~3 iterations of gradient descent per second or ~9000 iterations per hour.
+ * and this code can perform ~2-3 iterations of gradient descent per second or ~9000 iterations per hour.
  */
 public class LogisticRegression {
     //set the file names
@@ -33,7 +33,7 @@ public class LogisticRegression {
     the training and validation matrices are using matrix-toolkits-java's sparse
     matrix implementation to improve efficiency. The rest of the matrices are
     dense since there are not many 0 values in them. Using sparse matrices
-    also improved memory usage by a lot.
+    also improved memory usage and algorithm speed by a lot.
      */
     private LinkedSparseMatrix xMatrix = new LinkedSparseMatrix(10000,61189);
     private DenseMatrix classificationsMatrix = new DenseMatrix(12000,1);
@@ -43,21 +43,17 @@ public class LogisticRegression {
     private DenseMatrix lineVector = new DenseMatrix(1,61189);
     private DenseMatrix columnMax = new DenseMatrix(61189, 1);
     private DenseMatrix columnMin = new DenseMatrix(61189, 1);
+    private DenseMatrix columnMeans;
+    private DenseMatrix columnSD;
     private LinkedSparseMatrix testMatrix = new LinkedSparseMatrix(2000,61189);
     //confusion matrix array
     private int[][] confusionMatrix = new int [20][20];
     //boolean to control when the confusion matrix is calculated and printed (at the end of training)
     private boolean getConfusionMatrix = false;
-
-
-
-
     //the learning rate
     private float eta;
-
     //the penalty term
     private float lambda;
-
     //the number of iterations
     private int iterations = 1000;
     private double testAccuracy = 0;
@@ -173,17 +169,16 @@ public class LogisticRegression {
             */
         }
         /*
-        These are the different scaling methods I implemented for the X matrix.
-        We found that TfIdf Scaling followed by my normalization method was the best
+        These are the different scaling methods we implemented for the X matrix.
+        We found that TfIdf Scaling followed by the normalization method was the best
         for accuracy. This will be discussed more in the report.
         */
         TfIdfScaling();
         NormalizeMatrix();
         /*
-        The other two scaling methods are available to use but are not used for our final model
-        so they are commented out.
+        The other scaling method is available to use but is not used for our final model
+        since it got pretty bad results so it is commented out.
          */
-        //StandardizeMatrix();
         //MinMaxNormalize();
 
         //build validation set
@@ -210,39 +205,6 @@ public class LogisticRegression {
     }
 
     /**
-     * This method gets the standard score for each value of the x matrix column wise.
-     */
-    private void StandardizeMatrix() {
-        DenseMatrix columnHelper = new DenseMatrix(10000,1);
-        Consumer<MatrixEntry> set1 = a -> a.set(1);
-        columnHelper.forEach(set1);
-        DenseMatrix columnMeans = new DenseMatrix(61189,1);
-        DenseMatrix columnSD = new DenseMatrix(61189,1);
-        //calculate column means by summing each column of X and dividing by 10000
-        xMatrix.transAmult((1/10000),columnHelper,columnMeans);
-        //get standard deviations for each column of data
-        for (int p=0;p<61189;p++) {
-            double standardDeviation = 0;
-            for(int q=0;q<10000;q++) {
-                standardDeviation += Math.pow(xMatrix.get(q,p)-columnMeans.get(p,0),2);
-            }
-            columnSD.set(p,0,Math.sqrt(standardDeviation/10000));
-        }
-        //iterate through the x matrix set each x value to the standard score
-        Iterator<MatrixEntry> test = xMatrix.iterator();
-        while (test.hasNext()) {
-            MatrixEntry next = test.next();
-            if (next.column()==1) {
-                xMatrix.set(next.row(),next.column(),1);
-            }
-            else {
-                xMatrix.set(next.row(), next.column(), (next.get() -columnMeans.get(next.column(),0))
-                        / (columnSD.get(next.column(),0)));
-            }
-        }
-    }
-
-    /**
      * This method scales the matrix column-wise in the following way:
      * Each value of x is divided by the total sum of each column.
      * This way, all the values of a column add up to 1.
@@ -250,6 +212,7 @@ public class LogisticRegression {
      * that have very high values.
      */
     private void NormalizeMatrix() {
+        System.out.println("Performing normalization on matrix columns");
         DenseMatrix columnHelper = new DenseMatrix(10000,1);
         Consumer<MatrixEntry> set1 = a -> a.set(1);
         columnHelper.forEach(set1);
@@ -258,7 +221,9 @@ public class LogisticRegression {
         Iterator<MatrixEntry> test = xMatrix.iterator();
         while (test.hasNext()) {
             MatrixEntry next = test.next();
-            xMatrix.set(next.row(), next.column(), next.get() / columnSums.get(next.column(), 0));
+            if (next.column()!=0) {
+                xMatrix.set(next.row(), next.column(), next.get() / columnSums.get(next.column(), 0));
+            }
         }
     }
 
@@ -266,6 +231,7 @@ public class LogisticRegression {
      * This method performs MinMax normalization on the x matrix
      */
     private void MinMaxNormalize() {
+        System.out.println("Performing MinMax normalization on matrix columns");
         Iterator<MatrixEntry> test = xMatrix.iterator();
         while (test.hasNext()) {
             MatrixEntry next = test.next();
@@ -286,6 +252,7 @@ public class LogisticRegression {
 
     /**
      * This method performs TfIdf scaling on the x matrix
+     * (Term Frequency - Inverse document frequency scaling)
      */
     private void TfIdfScaling() {
         System.out.println("Performing Tf-Idf scaling on matrix");
@@ -323,6 +290,8 @@ public class LogisticRegression {
 
     /**
      * This method trains the Logistic Regression model
+     * Updates the weight matrix using the matrix equation provided
+     * in the project pdf.
      */
     public void train(){
         //iterate and update weight matrix every time
@@ -350,7 +319,7 @@ public class LogisticRegression {
             weightsMatrix.add(eta, temp3);
             /*
             The following 3 lines were used to standardize the weight matrix each iteration which
-            I found to be unnecessary.
+            I found to be unnecessary since we are tuning the penalty parameter.
              */
             //Array2D<Double> array2D = Array2D.R064.rows(getArray(weightsMatrix));
             //array2D.modifyAny(DataProcessors.STANDARD_SCORE);
