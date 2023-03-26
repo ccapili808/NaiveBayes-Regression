@@ -7,7 +7,7 @@
 * [Report](https://docs.google.com/document/d/1yWmtAEf-TGO7MUCfr1-NoXLMXN6U-13BJ--bm_LfpAU/edit?usp=sharing)
 
 ### Libraries Used
-* [Fommil](https://github.com/fommil/matrix-toolkits-java/)
+* [Matrix-toolkits-java](https://github.com/fommil/matrix-toolkits-java/)
 * [ojAlgo](https://github.com/optimatika/ojAlgo)
 
 ## To Run:
@@ -29,6 +29,8 @@
             the data set below in the same folder/directory that the jar is in. The file names need to be exactly
             the same as the ones below. 
 
+    The beta, lambda, and eta(learning rate) values need to be a number and the number of iterations
+    needs to be an integer.
     Once the user runs one of either LR or NB, the program will run and then report the accuracy. 
     Please allow some time for running.
 
@@ -130,7 +132,7 @@
         After taking user input, logistic regression then runs the following three methods: 
             1) createDataSet()
                 1.1) TfIdfScaling()
-                1.2) NormalizationMatrix()
+                1.2) NormalizeMatrix()
             2) train()
                 for # of iterations
                     2.1) calculateProbabilities()
