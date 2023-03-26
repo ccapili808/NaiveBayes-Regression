@@ -3,7 +3,7 @@
 ### Vasileios Grigorios Kourakos and Chai Capili, 2023
 
 ### Links
-* [Github repository](https://github.com/ccapili808/NaiveBayes-Regression/main)
+* [Github repository](https://github.com/ccapili808/NaiveBayes-Regression)
 * [Report](https://docs.google.com/document/d/1yWmtAEf-TGO7MUCfr1-NoXLMXN6U-13BJ--bm_LfpAU/edit?usp=sharing)
 
 ### Libraries Used
